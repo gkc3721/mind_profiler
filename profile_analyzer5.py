@@ -403,7 +403,7 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
     for v in raw_means_map.values():
         try:
             fv = float(v)
-            if not math.isnan(fv):
+            if not math.isnan(fv) and not math.isinf(fv):
                 raw_vals.append(fv)
         except Exception:
             continue
@@ -413,7 +413,7 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
     for v in score_map.values():
         try:
             fv = float(v)
-            if not math.isnan(fv):
+            if not math.isnan(fv) and not math.isinf(fv):
                 score_vals.append(fv)
         except Exception:
             continue
@@ -439,7 +439,7 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
                         if v is None:
                             continue
                         fv = float(v)
-                        if not math.isnan(fv):
+                        if not math.isnan(fv) and not math.isinf(fv):
                             vals.append(fv)
                     except Exception:
                         continue

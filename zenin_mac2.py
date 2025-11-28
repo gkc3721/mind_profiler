@@ -2,6 +2,7 @@ import os
 import csv
 import time
 import re
+import math
 import pandas as pd
 import numpy as np
 from analytics5 import compute_mail_csv_metrics, to_sheet_row
@@ -244,7 +245,7 @@ def main():
 				v = scores_map.get(b)
 				try:
 					fv = float(v)
-					if not pd.isna(fv):
+					if not pd.isna(fv) and not math.isinf(fv):
 						vals.append((b, fv))
 				except Exception:
 					continue
@@ -305,7 +306,10 @@ def main():
 				try:
 					if v is None or pd.isna(v):
 						return ""
-					return round(float(v), 2)
+					fv = float(v)
+					if math.isinf(fv):
+						return ""
+					return round(fv, 2)
 				except Exception:
 					return ""
 			def fmt_raw(band):
@@ -313,7 +317,10 @@ def main():
 				try:
 					if v is None or pd.isna(v):
 						return ""
-					return round(float(v), 6)
+					fv = float(v)
+					if math.isinf(fv):
+						return ""
+					return round(fv, 6)
 				except Exception:
 					return ""
 			log_row = {

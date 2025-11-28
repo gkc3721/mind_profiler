@@ -52,7 +52,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
             for b, v in scores.items():
                 try:
                     fv = float(v)
-                    if not (math.isnan(fv)):
+                    if not (math.isnan(fv) or math.isinf(fv)):
                         vals.append((b, fv))
                 except Exception:
                     continue
@@ -134,7 +134,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
                     if r is not None and s is not None:
                         rr = float(r)
                         ss = float(s)
-                        if not (math.isnan(rr) or math.isnan(ss)):
+                        if not (math.isnan(rr) or math.isnan(ss) or math.isinf(rr) or math.isinf(ss)):
                             pairs.append((b, rr, ss))
                 except Exception:
                     continue

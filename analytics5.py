@@ -165,7 +165,9 @@ def compute_mail_csv_metrics(df: pd.DataFrame) -> Dict[str, float]:
         tsd = df.set_index("TimeStamp")[clean_cols]
         smooth = tsd.resample("1s").mean().rolling(f"{WINDOW_SECS}s", min_periods=3).mean()
         for c in smooth.columns:
-            series = pd.to_numeric(smooth[c], errors="coerce").dropna()
+            series = pd.to_numeric(smooth[c], errors="coerce")
+            # Replace infinity values with NaN before dropping
+            series = series.replace([np.inf, -np.inf], np.nan).dropna()
             if series.empty:
                 continue
             band = c.replace("_avg_clean", "").replace("_avg", "").capitalize()
@@ -173,7 +175,10 @@ def compute_mail_csv_metrics(df: pd.DataFrame) -> Dict[str, float]:
     else:
         for c in clean_cols:
             band = c.replace("_avg_clean", "").replace("_avg", "").capitalize()
-            raw_means[band] = float(pd.to_numeric(df[c], errors="coerce").mean())
+            s = pd.to_numeric(df[c], errors="coerce")
+            # Replace infinity values with NaN
+            s = s.replace([np.inf, -np.inf], np.nan)
+            raw_means[band] = float(s.mean())
 
     print(f"🔧 ANALYTICS DEBUG: Raw means: {raw_means}")
 
