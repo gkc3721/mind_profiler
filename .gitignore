@@ -1,37 +1,23 @@
-
+# Python
 venv/
-
-.venv/
-
-
 __pycache__/
-
 *.pyc
 
-*.pyo
+# Runs / data outputs
+backend/app/data/runs/
+*.log
+processing_log*.csv
+profile_summary*.xlsx
+wave_combinations_*.xlsx
+band_stats_summary.xlsx
 
-*~$
+# Node
+frontend/node_modules/
+frontend/dist/
 
-
+# macOS
 .DS_Store
 
+# Editor
 .vscode/
-
-
-processing_log*.csv
-
-run_counter.txt
-
-UNMATCHED_DATA/
-
-
-graphs/
-
-normal/
-
-dominant/
-
-
-
-# *Zihin_Profilleri_*.csv
-
+.idea/

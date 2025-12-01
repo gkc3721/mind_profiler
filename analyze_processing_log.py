@@ -138,7 +138,189 @@ def compute_dominance_summary(df_all, prof_col="en_iyi_profiller"):
         })
     return pd.DataFrame(rows)
 
-def save_multi_sheet(summary_dict, out_path, dominance_df=None):
+def compute_profile_band_stats(df_all, prof_col="en_iyi_profiller"):
+    """
+    Compute profile-level band statistics including:
+    - Profile name
+    - Count of 5-match and 4-match occurrences
+    - Average score per band (score_delta, score_theta, etc.)
+    - Average pct per band (pct_delta, pct_theta, etc.)
+    - Average pct_window per band (pct_delta_window, etc.)
+    - Mode (most frequent) of each level (level_delta, level_theta, etc.)
+    """
+    # Count 5-match and 4-match
+    counts_5 = {}
+    counts_4 = {}
+    
+    # Initialize band stats accumulators per profile
+    profile_rows = {}  # profile -> list of row indices
+    
+    bands = ["Delta", "Theta", "Alpha", "Beta", "Gamma"]
+    
+    for idx, row in df_all.iterrows():
+        profs_raw = (row.get(prof_col, "") or "")
+        if not profs_raw:
+            continue
+        
+        parts = [p.strip() for p in str(profs_raw).split(",") if p.strip()]
+        
+        for p in parts:
+            # Check if 4-match
+            is_4 = bool(re.search(r"\(.*?4\s*uyumlu.*?\)", p, flags=re.IGNORECASE) or 
+                       re.search(r"\b4\s*uyumlu\b", p, flags=re.IGNORECASE))
+            base = normalize_profile_name(p)
+            if not base:
+                continue
+            
+            # Count matches
+            if is_4:
+                counts_4[base] = counts_4.get(base, 0) + 1
+            else:
+                counts_5[base] = counts_5.get(base, 0) + 1
+            
+            # Store row index for this profile
+            if base not in profile_rows:
+                profile_rows[base] = []
+            profile_rows[base].append(idx)
+    
+    # Helper function to safely check if column exists
+    def col(name):
+        return name if name in df_all.columns else None
+    
+    # Build robust column mappings
+    score_cols = {
+        "Delta": col("score_delta"),
+        "Theta": col("score_theta"),
+        "Alpha": col("score_alpha"),
+        "Beta":  col("score_beta"),
+        "Gamma": col("score_gamma"),
+    }
+    
+    pct_cols = {
+        "Delta": col("pct_delta"),
+        "Theta": col("pct_theta"),
+        "Alpha": col("pct_alpha"),
+        "Beta":  col("pct_beta"),
+        "Gamma": col("pct_gamma"),
+    }
+    
+    pct_window_cols = {
+        "Delta": col("pct_delta_window"),
+        "Theta": col("pct_theta_window"),
+        "Alpha": col("pct_alpha_window"),
+        "Beta":  col("pct_beta_window"),
+        "Gamma": col("pct_gamma_window"),
+    }
+    
+    level_cols = {
+        "Delta": col("level_delta"),
+        "Theta": col("level_theta"),
+        "Alpha": col("level_alpha"),
+        "Beta":  col("level_beta"),
+        "Gamma": col("level_gamma"),
+    }
+    
+    # Build output DataFrame
+    results = []
+    profiles = sorted(set(list(counts_5.keys()) + list(counts_4.keys())))
+    
+    for prof in profiles:
+        c5 = counts_5.get(prof, 0)
+        c4 = counts_4.get(prof, 0)
+        
+        row_data = {
+            "Profile": prof,
+            "5_Uyumlu": c5,
+            "4_Uyumlu": c4,
+            "Toplam": c5 + c4
+        }
+        
+        # Get subset of rows for this profile
+        row_indices = profile_rows.get(prof, [])
+        if row_indices:
+            sub = df_all.loc[row_indices]
+            
+            # Drop rows where all pct_* are zero or NaN (no usable percentage data)
+            pct_cols_list = [pct_cols[b] for b in bands if pct_cols.get(b)]
+            if pct_cols_list:
+                pct_block = sub[pct_cols_list].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+                pct_sum = pct_block.sum(axis=1)
+                sub = sub[pct_sum > 0.0]
+            
+            # If no valid rows remain, skip averaging
+            if sub.empty:
+                for b in bands:
+                    row_data[f"Avg_Score_{b}"] = None
+                    row_data[f"Avg_Pct_{b}"] = None
+                    row_data[f"Avg_PctWindow_{b}"] = None
+                    row_data[f"Mode_Level_{b}"] = None
+            else:
+                # Add average scores per band
+                for b in bands:
+                    c = score_cols.get(b)
+                    if c and c in sub.columns:
+                        vals = pd.to_numeric(sub[c], errors="coerce")
+                        row_data[f"Avg_Score_{b}"] = round(float(vals.mean(skipna=True)), 2) if not vals.isna().all() else None
+                    else:
+                        row_data[f"Avg_Score_{b}"] = None
+                
+                # Average global pct per band (ignore zeros and NaN)
+                for b in bands:
+                    c = pct_cols.get(b)
+                    key = f"Avg_Pct_{b}"
+                    if c and c in sub.columns:
+                        vals = pd.to_numeric(sub[c], errors="coerce")
+                        vals = vals[vals > 0]  # ignore 0 and NaN
+                        row_data[key] = round(float(vals.mean()), 4) if not vals.empty else None
+                    else:
+                        row_data[key] = None
+                
+                # Average window-filtered pct per band (ignore zeros and NaN)
+                for b in bands:
+                    c = pct_window_cols.get(b)
+                    key = f"Avg_PctWindow_{b}"
+                    if c and c in sub.columns:
+                        vals = pd.to_numeric(sub[c], errors="coerce")
+                        vals = vals[vals > 0]  # ignore 0 and NaN
+                        row_data[key] = round(float(vals.mean()), 4) if not vals.empty else None
+                    else:
+                        row_data[key] = None
+                
+                # Add mode (most frequent level) per band
+                for b in bands:
+                    c = level_cols.get(b)
+                    if c and c in sub.columns:
+                        levels = sub[c].dropna().astype(str).str.strip()
+                        levels = levels[levels != ""]
+                        if not levels.empty:
+                            from collections import Counter
+                            counter = Counter(levels)
+                            most_common = counter.most_common(1)[0][0]
+                            row_data[f"Mode_Level_{b}"] = most_common
+                        else:
+                            row_data[f"Mode_Level_{b}"] = None
+                    else:
+                        row_data[f"Mode_Level_{b}"] = None
+        else:
+            # No rows for this profile - set all to None
+            for b in bands:
+                row_data[f"Avg_Score_{b}"] = None
+                row_data[f"Avg_Pct_{b}"] = None
+                row_data[f"Avg_PctWindow_{b}"] = None
+                row_data[f"Mode_Level_{b}"] = None
+        
+        results.append(row_data)
+    
+    df_result = pd.DataFrame(results)
+    
+    # Sort by total occurrences
+    if "Toplam" in df_result.columns:
+        df_result = df_result.sort_values("Toplam", ascending=False).reset_index(drop=True)
+    
+    return df_result
+
+
+def save_multi_sheet(summary_dict, out_path, dominance_df=None, stats_df=None):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         # write Toplam sheet first if present
@@ -150,13 +332,17 @@ def save_multi_sheet(summary_dict, out_path, dominance_df=None):
         if dominance_df is not None:
             sheet = "Dominance"[:31]
             dominance_df.to_excel(writer, sheet_name=sheet or "Dominance", index=False)
+        # write ProfileStats sheet (if provided)
+        if stats_df is not None:
+            sheet = "ProfileStats"[:31]
+            stats_df.to_excel(writer, sheet_name=sheet or "ProfileStats", index=False)
         # then write each event
         for event, df in summary_dict.items():
             sheet = str(event).replace("/", "_").replace("\\", "_")[:31]
             df.to_excel(writer, sheet_name=sheet or "event", index=False)
     return out_path
 
-def main(log_arg=None, out_arg=None):
+def main(log_arg=None, out_arg=None, run_id_arg=None):
     log_path = find_log(log_arg)
     if not log_path:
         print("processing_log.csv bulunamadı. Yol verin veya log'u varsayılan konumdaki dosyayı oluşturun.")
@@ -164,14 +350,14 @@ def main(log_arg=None, out_arg=None):
     print(f"Log dosyası: {log_path}")
 
     df = pd.read_csv(log_path, encoding="utf-8", dtype=str).fillna("")
-    # detect column name
+    # detect column name - prefer En_Iyi_Profiller (preserves 4-match tags), fallback to other variants
     prof_col = None
-    for c in ["en_iyi_profiller", "En_Iyi_Profiller", "en_iyi_profiler", "en_iyi_profiler"]:
+    for c in ["En_Iyi_Profiller", "en_iyi_profiller", "best_profile", "en_iyi_profiler"]:
         if c in df.columns:
             prof_col = c
             break
     if prof_col is None:
-        raise RuntimeError("Log dosyasında 'en_iyi_profiller' sütunu bulunamadı.")
+        raise RuntimeError("Log dosyasında 'best_profile' veya 'en_iyi_profiller' sütunu bulunamadı.")
 
     event_col = "event" if "event" in df.columns else None
     if event_col is None:
@@ -189,18 +375,22 @@ def main(log_arg=None, out_arg=None):
     total_df = aggregate_event(df, prof_col=prof_col)
     # compute dominance summary across all rows (single sheet)
     dominance_df = compute_dominance_summary(df, prof_col=prof_col)
+    # compute profile band stats
+    stats_df = compute_profile_band_stats(df, prof_col=prof_col)
 
     # ensure Toplam key exists and will be written first, and include dominance sheet
     summaries = {"Toplam": total_df, **{k: v for k, v in summaries.items() if k != "Toplam"}}
 
-    # Extract run_id from log filename or use counter file
-    run_id = None
-    log_basename = os.path.basename(log_path)
-    match = re.search(r'processing_log(\d+)\.csv', log_basename)
-    if match:
-        run_id = int(match.group(1))
-    else:
-        run_id = _get_last_run_id()
+    # Use provided run_id or extract from log filename or use counter file
+    run_id = run_id_arg
+    if run_id is None:
+        log_basename = os.path.basename(log_path)
+        # Try to match timestamp format like 20251201_014614 or just digits
+        match = re.search(r'processing_log([0-9_]+)\.csv', log_basename)
+        if match:
+            run_id = match.group(1)
+        else:
+            run_id = _get_last_run_id()
     
     if run_id is None:
         print("⚠️ Run ID belirlenemedi, varsayılan kullanılıyor: 1005")
@@ -208,7 +398,7 @@ def main(log_arg=None, out_arg=None):
     
     out_dir = os.path.dirname(log_path) if out_arg is None else out_arg
     out_path = os.path.join(out_dir, f"profile_summary{run_id}.xlsx")
-    save_multi_sheet(summaries, out_path, dominance_df=dominance_df)
+    save_multi_sheet(summaries, out_path, dominance_df=dominance_df, stats_df=stats_df)
     print(f"Özet Excel kaydedildi: {out_path}")
 
     # Yeni: hızlı analiz için diagnostic script
@@ -216,14 +406,21 @@ def main(log_arg=None, out_arg=None):
     total = len(df)
     print(f"Toplam satır: {total}")
 
-    if "en_iyi_profiller" not in df.columns:
-        print("⚠️ 'en_iyi_profiller' sütunu bulunmuyor.")
+    # Check for profile column with case variations - prefer En_Iyi_Profiller (preserves 4-match tags)
+    prof_col_name = None
+    for possible_name in ["En_Iyi_Profiller", "en_iyi_profiller", "best_profile", "en_iyi_profiler"]:
+        if possible_name in df.columns:
+            prof_col_name = possible_name
+            break
+    
+    if prof_col_name is None:
+        print("⚠️ 'best_profile' veya 'en_iyi_profiller' sütunu bulunmuyor.")
     else:
-        col = df["en_iyi_profiller"].fillna("").astype(str)
+        col = df[prof_col_name].fillna("").astype(str)
         empty_cnt = (col.str.strip() == "").sum()
         nan_like_cnt = col.str.strip().str.lower().isin(["nan","none","na"]).sum()
         non_empty_cnt = total - empty_cnt
-        print(f"en_iyi_profiller: boş/'' = {empty_cnt}, nan-like = {nan_like_cnt}, dolu satır = {non_empty_cnt}")
+        print(f"{prof_col_name}: boş/'' = {empty_cnt}, nan-like = {nan_like_cnt}, dolu satır = {non_empty_cnt}")
 
     if "event" in df.columns:
         print("Event dağılımı (ilk 20):")
@@ -231,16 +428,22 @@ def main(log_arg=None, out_arg=None):
     else:
         print("event sütunu yok")
 
-    empty_rows = df[col.str.strip() == ""]
-    print(f"en_iyi_profiller boş satır sayısı: {len(empty_rows)}. İlk {5} örnek:")
-    print(empty_rows.head(5)[["event","person_name","source_file","en_iyi_profiller"]])
+    # Only proceed with diagnostic if profile column exists
+    if prof_col_name is not None:
+        empty_rows = df[col.str.strip() == ""]
+        print(f"{prof_col_name} boş satır sayısı: {len(empty_rows)}. İlk {5} örnek:")
+        display_cols = ["event", "person_name", "source_file", prof_col_name]
+        available_cols = [c for c in display_cols if c in df.columns]
+        if available_cols:
+            print(empty_rows.head(5)[available_cols])
 
-    print(f"en_iyi_profiller dolu örnekler (ilk {5}):")
-    print(df[col.str.strip() != ""].head(5)[["event","person_name","source_file","en_iyi_profiller"]])
+        print(f"{prof_col_name} dolu örnekler (ilk {5}):")
+        if available_cols:
+            print(df[col.str.strip() != ""].head(5)[available_cols])
 
-    # Kontrol: farklı türde NaN/None stringlerinin varlığı
-    print("en_iyi_profiller unique örnekleri (örnek 50):")
-    print(df["en_iyi_profiller"].dropna().astype(str).unique()[:50])
+        # Kontrol: farklı türde NaN/None stringlerinin varlığı
+        print(f"{prof_col_name} unique örnekleri (örnek 50):")
+        print(df[prof_col_name].dropna().astype(str).unique()[:50])
 
     return 0
 

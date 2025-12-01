@@ -11,7 +11,7 @@ import os
 BALANCE_THRESHOLD = 22.0
 DENGE_MEAN_THRESHOLD= 46.0
 # Sabit profil dosyası yolu (mutlaka bu dosyayı kullan)
-PROFILES_FILE = "/Users/umutkaya/Documents/Zenin Mind Reader/zenin_mac/Zihin_Profilleri_28_3.csv"
+PROFILES_FILE = "/Users/umutkaya/Documents/Zenin Mind Reader/zenin_mac2/Zihin_Profilleri_29.csv"
 
 # --- YENİ: raw_means tabanlı kontrol eşiği ---
 CONTROLLED_MEAN_THRESHOLD = 38.0
@@ -355,9 +355,14 @@ def band_score_for_profile_cell(cell: str, person_level_5: str) -> int:
 
     return best
 # --- ANA FONKSİYON (GÜNCELLENDİ) ---
-def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any]:
+def analyze_profiles_from_metrics(csv_name: str, metrics: Dict, profile_csv_path: str = None, balance_threshold: float = None, denge_mean_threshold: float = None) -> Dict[str, any]:
+    # Use provided parameters or fall back to defaults
+    profiles_file = profile_csv_path if profile_csv_path is not None else PROFILES_FILE
+    balance_thresh = balance_threshold if balance_threshold is not None else BALANCE_THRESHOLD
+    denge_mean_thresh = denge_mean_threshold if denge_mean_threshold is not None else DENGE_MEAN_THRESHOLD
+    
     try:
-        profiles_df = load_profiles_table(PROFILES_FILE)
+        profiles_df = load_profiles_table(profiles_file)
         PROFILE_RULES = compile_profile_rules(profiles_df)
         PROFILE_CELLS = extract_profile_cells(profiles_df)
         print(f"🔧 PROFILE DEBUG: Derlenen profil sayısı: {len(PROFILE_RULES)}")
@@ -428,7 +433,7 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
     # Denge Ustası kontrolü
     if dalga_farki is not None:
         try:
-            if dalga_farki <= BALANCE_THRESHOLD:
+            if dalga_farki <= balance_thresh:
                 print(f"✅ DEBUG - Denge Ustası tespit edildi! (Fark: {dalga_farki})")
         # scores ortalamasına göre 'DENGE USTASI YÜKSEK' veya 'DENGE USTASI DÜŞÜK' ata
                 scores_map = metrics.get("scores", {}) or {}
@@ -446,10 +451,10 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
                 mean_score = None
                 if vals:
                     mean_score = sum(vals) / len(vals)
-                # Mean eşik kontrolü: DENGE_MEAN_THRESHOLD sabitini kullan
+                # Mean eşik kontrolü: denge_mean_thresh parametresini kullan
                 if mean_score is None:
                     label = "DENGE USTASI"
-                elif mean_score >= DENGE_MEAN_THRESHOLD:
+                elif mean_score >= denge_mean_thresh:
                     label = "YÜKSEK BİLİNÇLİ"
                 else:
                     label = "DENGE USTASI"
@@ -565,11 +570,11 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
     
     # Atanan profil adını bir string haline getir
     final_profile_str = ", ".join(top)
-
+    
     # Kontrollü Yaşayan profilini ikiye bölme özelliği kaldırıldı
     # Profil olduğu gibi kullanılacak
     
-    return {
+    result = {
         "dalga_farki": dalga_farki,
         "tam_uyumlu_profiller": tam_text,
         "en_iyi_profiller": final_profile_str, # Potansiyel olarak güncellenmiş profil adını kullan
@@ -578,3 +583,12 @@ def analyze_profiles_from_metrics(csv_name: str, metrics: Dict) -> Dict[str, any
         "controlled_mean": mean_score,
         "controlled_label": ""
     }
+    
+    # Final debug: verify return structure
+    print(f"🔧 PROFILE ANALYZER RETURN DEBUG:")
+    print(f"   en_iyi_profiller: '{result.get('en_iyi_profiller', 'MISSING')}'")
+    print(f"   tam_uyumlu_profiller: '{result.get('tam_uyumlu_profiller', 'MISSING')}'")
+    print(f"   en_iyi_puan: {result.get('en_iyi_puan', 'MISSING')}")
+    print(f"   dalga_farki: {result.get('dalga_farki', 'MISSING')}")
+    
+    return result

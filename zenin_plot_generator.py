@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from analytics5 import BAND_THRESHOLDS
 
-# Parametreler
+    # Parametreler (defaults, can be overridden)
 WINDOW_SECS = 30
 BALANCE_THRESHOLD = 22.0 # Bu değeri profile_analyzer2.py ile aynı yapın
 DOMINANCE_DELTA = 29.0   # Grafik için skor bazlı baskın eşik (puan cinsinden)
@@ -21,8 +21,13 @@ BAND_COLORS = {
 }
 
 # --- ANA FONKSİYONU GÜNCELLE ---
-def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profile_map=None, output_dir="eeg_plots"):
+def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profile_map=None, output_dir="eeg_plots", balance_threshold=None, dominance_delta=None, window_secs=None):
     print(f"🔧 PLOT DEBUG: generate_eeg_plots çağrıldı")
+    
+    # Use provided parameters or defaults
+    win_secs = window_secs if window_secs is not None else WINDOW_SECS
+    bal_thresh = balance_threshold if balance_threshold is not None else BALANCE_THRESHOLD
+    dom_delta = dominance_delta if dominance_delta is not None else DOMINANCE_DELTA
     
     os.makedirs(output_dir, exist_ok=True)
     plot_files = []
@@ -68,7 +73,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
                 second_top_val = desc[1][1]
                 top_diff = top_val - second_top_val
                 print(f"🔧 DEBUG dominance (scores): top={top_band}({top_val}), second={second_top_val}, diff={top_diff}")
-                if top_diff >= DOMINANCE_DELTA:
+                if top_diff >= dom_delta:
                     dominance[top_band] = "Baskın Yüksek"
 
                 asc = sorted(vals, key=lambda x: x[1])
@@ -77,7 +82,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
                 second_bot_val = asc[1][1]
                 bot_diff = second_bot_val - bot_val
                 print(f"🔧 DEBUG dominance (scores): bot={bot_band}({bot_val}), second={second_bot_val}, diff={bot_diff}")
-                if bot_diff >= DOMINANCE_DELTA:
+                if bot_diff >= dom_delta:
                     dominance[bot_band] = "Baskın Düşük"
 
             # DEBUG: final dominance
@@ -110,7 +115,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
                 continue
 
             ts = df.set_index("TimeStamp")[avg_cols]
-            smooth = ts.resample("1s").mean().rolling(f"{WINDOW_SECS}s", min_periods=1).mean()
+            smooth = ts.resample("1s").mean().rolling(f"{win_secs}s", min_periods=1).mean()
 
             fig, ax = plt.subplots(figsize=(15, 7))
 
@@ -200,7 +205,7 @@ def generate_eeg_plots(dfs, metrics_map=None, balance_diff_map=None, best_profil
             if bal_diff is not None and not pd.isna(bal_diff):
                 handles.append(Line2D([], [], linestyle="none"))
                 diff_text = f"Dalga Farkı: {bal_diff:.2f}"
-                if bal_diff <= BALANCE_THRESHOLD:
+                if bal_diff <= bal_thresh:
                     diff_text += " (Denge Ustası)"
                 new_labels.append(diff_text)
             
